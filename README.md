@@ -1,32 +1,49 @@
-# React + TypeScript + Vite
+# Sistema de Fiscalização Operacional de Rua
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Aplicação web desenvolvida para acompanhamento diário e fiscalização presencial de equipes externas de conservação urbana (varrição, capina, roçada e pintura).
 
-Currently, two official plugins are available:
+## Funcionalidades Atuais
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+* **Seleção de Setor:** Listagem e troca rápida de setor de trabalho (Conserv).
+* **Gestão de Equipes por Conserv:** Exibição dos funcionários ativos alocados no setor selecionado.
+* **Filtros de Campo:**
+  * Busca textual por nome ou empresa em tempo real.
+  * Filtro por função exercida (varredor, pintor, roçador, etc.).
+  * Filtro rápido de status diário: Todos, Pendentes e Auditados.
+  * Barra de progresso visual de fiscalização do dia.
+* **Ficha de Fiscalização:**
+  * Verificação do uso adequado de Equipamentos de Proteção Individual (EPI).
+  * Apontamento de status individual: Presente, Falta, Folga, Férias, INSS, Cedido e Outros.
+  * Campo obrigatório para detalhamento de destino/motivo ao selecionar Cedido ou Outros.
+  * Botão de confirmação explícito antes de gravar para evitar erros de toque em campo.
+* **Indicadores Visuais:** Identificação imediata na lista de quem já foi auditado e o respectivo status atribuído hoje.
+* **Histórico e Relatórios:**
+  * Painel de consulta de fiscalizações filtrado por data e setor.
+  * Exportação de dados consolidados em formato CSV (compatível com Excel).
 
-## React Compiler
+## Tecnologias Utilizadas
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+* **Frontend:** React, TypeScript, Vite, Tailwind CSS.
+* **Backend e Banco de Dados:** Supabase (PostgreSQL, Realtime, Auth).
 
-## Expanding the Oxlint configuration
+## Como Rodar o Projeto
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+1. Clone o repositório e instale as dependências:
+  ```bash
+    npm install
+  ```
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
+2. Crie o arquivo .env.local na raiz com as chaves do Supabase:
+  ```bash
+    VITE_SUPABASE_URL=https://seu-projeto.supabase.co
+    VITE_SUPABASE_ANON_KEY=sua-chave-anonima
+  ```
+3. Inicie o servidor local:
+  ```bash
+    npm run dev
+  ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+4. Para testar em dispositivos móveis na mesma rede Wi-Fi:
+  ```bash
+    npm run dev -- --host
+  ```
