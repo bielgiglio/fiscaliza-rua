@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './lib/supabase'
+import Login from './components/Login'
 
 interface Conserv {
   id: string
@@ -24,6 +25,9 @@ interface RegistoHistorico {
   status: string
   detalhe_localizacao: string | null
   epi_correto: boolean
+  fiscal?: {
+    nome_completo: string
+  }
   funcionario: {
     nome: string
     codigo: string
@@ -38,9 +42,12 @@ interface RegistoHistorico {
 type TipoStatus = 'presente' | 'falta' | 'folga' | 'ferias' | 'inss' | 'cedido' | 'outros'
 
 export default function App() {
+  const [usuario, setUsuario] = useState<any>(null)
+  const [perfil, setPerfil] = useState<{ papel: string; ativo: boolean; nome_completo: string } | null>(null)
+  const [carregandoSessao, setCarregandoSessao] = useState(true)
+
   const [abaAtual, setAbaAtual] = useState<'fiscalizar' | 'historico'>('fiscalizar')
 
-  // Estados de Fiscalização
   const [conservs, setConservs] = useState<Conserv[]>([])
   const [conservSelecionado, setConservSelecionado] = useState<Conserv | null>(null)
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([])
@@ -53,19 +60,59 @@ export default function App() {
   const [filtroFuncao, setFiltroFuncao] = useState('todas')
   const [filtroAuditoria, setFiltroAuditoria] = useState<'todos' | 'pendentes' | 'auditados'>('todos')
 
-  // Modal de fiscalização
   const [funcionarioAtivo, setFuncionarioAtivo] = useState<Funcionario | null>(null)
   const [statusSelecionado, setStatusSelecionado] = useState<TipoStatus | null>(null)
   const [detalheLocal, setDetalheLocal] = useState('')
   const [epiCorreto, setEpiCorreto] = useState<boolean>(true)
 
-  // Estados do Histórico
   const [historico, setHistorico] = useState<RegistoHistorico[]>([])
   const [loadingHistorico, setLoadingHistorico] = useState(false)
   const [dataFiltro, setDataFiltro] = useState(new Date().toISOString().split('T')[0])
   const [conservFiltro, setConservFiltro] = useState<string>('todos')
 
+  const ehAdmin = perfil?.papel === 'admin' || perfil?.papel === 'superadmin'
+
+  // Monitora Sessão
   useEffect(() => {
+    async function carregarPerfil(userId: string) {
+      const { data } = await supabase
+        .from('perfis')
+        .select('papel, ativo, nome_completo')
+        .eq('id', userId)
+        .single()
+      setPerfil(data)
+    }
+
+    async function verificarSessao() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user) {
+        setUsuario(session.user)
+        await carregarPerfil(session.user.id)
+      }
+      setCarregandoSessao(false)
+    }
+
+    verificarSessao()
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        setUsuario(session.user)
+        await carregarPerfil(session.user.id)
+      } else {
+        setUsuario(null)
+        setPerfil(null)
+      }
+    })
+
+    return () => {
+      authListener.subscription.unsubscribe()
+    }
+  }, [])
+
+  // Carrega Conservs
+  useEffect(() => {
+    if (!usuario || !perfil?.ativo) return
+
     async function carregarConservs() {
       const { data, error } = await supabase
         .from('conservs')
@@ -77,9 +124,43 @@ export default function App() {
       setLoading(false)
     }
     carregarConservs()
-  }, [])
+  }, [usuario, perfil])
 
-  // Carrega funcionários e os registros já feitos hoje para este setor
+  // Sincronização em tempo real (Realtime) para múltiplos fiscais
+  useEffect(() => {
+    if (!conservSelecionado) return
+
+    const dataHoje = new Date().toISOString().split('T')[0]
+
+    const channel = supabase
+      .channel('fiscalizacoes_hoje')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'fiscalizacoes_diarias',
+          filter: `data_referencia=eq.${dataHoje}`,
+        },
+        (payload: any) => {
+          if (payload.new && payload.new.funcionario_id) {
+            setStatusHojeMap((prev) => ({
+              ...prev,
+              [payload.new.funcionario_id]: {
+                status: payload.new.status,
+                epi: payload.new.epi_correto,
+              },
+            }))
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [conservSelecionado])
+
   async function abrirConserv(conserv: Conserv) {
     setConservSelecionado(conserv)
     setLoadingFuncionarios(true)
@@ -89,7 +170,6 @@ export default function App() {
 
     const dataHoje = new Date().toISOString().split('T')[0]
 
-    // Busca funcionários ativos do Conserv
     const { data: funcsData } = await supabase
       .from('funcionarios')
       .select('*')
@@ -97,7 +177,6 @@ export default function App() {
       .eq('ativo', true)
       .order('nome')
 
-    // Busca fiscalizações já registradas hoje
     const { data: fiscData } = await supabase
       .from('fiscalizacoes_diarias')
       .select('funcionario_id, status, epi_correto')
@@ -138,7 +217,7 @@ export default function App() {
   }
 
   async function confirmarEGravar() {
-    if (!funcionarioAtivo || !statusSelecionado) return
+    if (!funcionarioAtivo || !statusSelecionado || !usuario) return
 
     if ((statusSelecionado === 'cedido' || statusSelecionado === 'outros') && !detalheLocal.trim()) {
       alert(`Por favor, especifique o detalhe/local para o status "${statusSelecionado.toUpperCase()}".`)
@@ -154,6 +233,7 @@ export default function App() {
       status: statusSelecionado,
       detalhe_localizacao: detalheLocal.trim() || null,
       epi_correto: epiCorreto,
+      fiscal_id: usuario.id,
     }
 
     const { error } = await supabase
@@ -167,7 +247,6 @@ export default function App() {
       return
     }
 
-    // Atualiza o mapa visual imediatamente na tela
     setStatusHojeMap((prev) => ({
       ...prev,
       [funcionarioAtivo.id]: {
@@ -180,41 +259,49 @@ export default function App() {
   }
 
   async function carregarHistorico() {
+    if (!ehAdmin) return
     setLoadingHistorico(true)
 
-    const query = supabase
-      .from('fiscalizacoes_diarias')
-      .select(`
-        id,
-        created_at,
-        data_referencia,
-        status,
-        detalhe_localizacao,
-        epi_correto,
-        funcionario:funcionarios (
-          nome,
-          codigo,
-          empresa,
-          funcao_exercida,
-          conserv:conservs ( nome )
-        )
-      `)
-      .eq('data_referencia', dataFiltro)
-      .order('created_at', { ascending: false })
+    try {
+      const { data, error } = await supabase
+        .from('fiscalizacoes_diarias')
+        .select(`
+          id,
+          created_at,
+          data_referencia,
+          status,
+          detalhe_localizacao,
+          epi_correto,
+          fiscal:perfis!fiscal_id ( nome_completo ),
+          funcionario:funcionarios (
+            nome,
+            codigo,
+            empresa,
+            funcao_exercida,
+            conserv:conservs ( nome )
+          )
+        `)
+        .eq('data_referencia', dataFiltro)
+        .order('created_at', { ascending: false })
 
-    const { data, error } = await query
-
-    if (!error && data) {
-      setHistorico(data as unknown as RegistoHistorico[])
+      if (error) {
+        console.error('Erro ao buscar histórico:', error)
+        alert(`Erro ao carregar dados: ${error.message}`)
+      } else {
+        setHistorico((data as unknown as RegistoHistorico[]) || [])
+      }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoadingHistorico(false)
     }
-    setLoadingHistorico(false)
   }
 
   useEffect(() => {
-    if (abaAtual === 'historico') {
+    if (abaAtual === 'historico' && ehAdmin) {
       carregarHistorico()
     }
-  }, [abaAtual, dataFiltro])
+  }, [abaAtual, dataFiltro, ehAdmin])
 
   function descarregarCSV() {
     if (historico.length === 0) {
@@ -222,7 +309,7 @@ export default function App() {
       return
     }
 
-    const colunas = ['Hora', 'Data', 'Funcionário', 'Código', 'Empresa', 'Conserv', 'Função', 'Estado', 'Detalhes', 'EPI Conforme']
+    const colunas = ['Hora', 'Data', 'Funcionário', 'Código', 'Empresa', 'Conserv', 'Função', 'Estado', 'Detalhes', 'EPI Conforme', 'Fiscal Responsável']
     const linhas = historico.map((r) => [
       new Date(r.created_at).toLocaleTimeString('pt-BR'),
       r.data_referencia,
@@ -234,6 +321,7 @@ export default function App() {
       r.status.toUpperCase(),
       `"${r.detalhe_localizacao || ''}"`,
       r.epi_correto ? 'SIM' : 'NÃO',
+      `"${r.fiscal?.nome_completo || 'Não identificado'}"`,
     ])
 
     const conteudoCSV = [colunas.join(','), ...linhas.map((e) => e.join(','))].join('\n')
@@ -247,11 +335,44 @@ export default function App() {
     document.body.removeChild(link)
   }
 
+  if (carregandoSessao) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center text-slate-500 text-sm">
+        A carregar sistema...
+      </div>
+    )
+  }
+
+  if (!usuario) {
+    return <Login onLoginSucesso={() => {}} />
+  }
+
+  if (perfil && !perfil.ativo) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+        <div className="bg-white max-w-sm w-full p-6 sm:p-8 rounded-2xl border border-slate-200 text-center shadow-md">
+          <div className="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-3 font-bold text-lg">
+            ⏳
+          </div>
+          <h2 className="text-base font-bold text-slate-800 mb-2">Conta em Análise</h2>
+          <p className="text-xs text-slate-600 mb-6 leading-relaxed">
+            Olá, <strong>{perfil.nome_completo}</strong>. O seu registo foi concluído, mas o acesso às equipas de campo necessita de autorização prévia de um administrador.
+          </p>
+          <button
+            onClick={() => supabase.auth.signOut()}
+            className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition"
+          >
+            Terminar Sessão
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   const funcoesDisponiveis = Array.from(
     new Set(funcionarios.map((f) => f.funcao_exercida))
   ).filter(Boolean)
 
-  // Filtros combinados: Texto, Função e Status de Auditoria
   const funcionariosFiltrados = funcionarios.filter((f) => {
     const termo = busca.toLowerCase()
     const coincideTexto =
@@ -276,7 +397,6 @@ export default function App() {
     return reg.funcionario?.conserv?.nome === conservFiltro
   })
 
-  // Estilização dos badges de status
   function renderBadgeStatus(status: TipoStatus) {
     switch (status) {
       case 'presente':
@@ -299,33 +419,51 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-100 p-4 sm:p-6 pb-20">
       <div className="max-w-2xl mx-auto">
-        {/* Barra Superior */}
-        <header className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <header className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
           <div>
-            <h1 className="text-xl font-bold text-slate-800">Fiscalização de Rua</h1>
-            <p className="text-xs text-slate-500">Gestão e controlo operacional em tempo real</p>
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-bold text-slate-800">Fiscalização de Rua</h1>
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-blue-100 text-blue-700">
+                {perfil?.papel}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500">
+              Operador: <strong>{perfil?.nome_completo}</strong>
+            </p>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setAbaAtual('fiscalizar')}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
                 abaAtual === 'fiscalizar'
                   ? 'bg-blue-600 text-white'
-                  : 'bg-white border border-slate-200 text-slate-600'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
               Fiscalizar
             </button>
+
+            {/* BOTÃO EXCLUSIVO PARA ADMIN E SUPERADMIN */}
+            {ehAdmin && (
+              <button
+                onClick={() => setAbaAtual('historico')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                  abaAtual === 'historico'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Relatórios
+              </button>
+            )}
+
             <button
-              onClick={() => setAbaAtual('historico')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                abaAtual === 'historico'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white border border-slate-200 text-slate-600'
-              }`}
+              onClick={() => supabase.auth.signOut()}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-600 hover:bg-rose-50 border border-rose-200 transition"
+              title="Sair"
             >
-              Histórico / Relatório
+              Sair
             </button>
           </div>
         </header>
@@ -360,7 +498,6 @@ export default function App() {
               </div>
             ) : (
               <div className="space-y-4">
-                {/* Painel do Setor, Estatísticas e Filtros */}
                 <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 space-y-3">
                   <div className="flex items-center justify-between">
                     <div>
@@ -379,7 +516,6 @@ export default function App() {
                     </span>
                   </div>
 
-                  {/* Barra de Progresso do Dia */}
                   <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200">
                     <div
                       className="bg-emerald-500 h-2 rounded-full transition-all duration-300"
@@ -389,7 +525,6 @@ export default function App() {
                     />
                   </div>
 
-                  {/* Input de Busca */}
                   <input
                     type="text"
                     placeholder="Pesquisar por nome ou empresa..."
@@ -398,7 +533,6 @@ export default function App() {
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
 
-                  {/* Filtro Rápido de Auditoria (Todos, Pendentes, Auditados) */}
                   <div className="grid grid-cols-3 gap-1.5 bg-slate-100 p-1 rounded-xl text-xs font-semibold text-center">
                     <button
                       onClick={() => setFiltroAuditoria('todos')}
@@ -426,7 +560,6 @@ export default function App() {
                     </button>
                   </div>
 
-                  {/* Pílulas de Filtro por Função */}
                   {funcoesDisponiveis.length > 0 && (
                     <div className="flex gap-1.5 overflow-x-auto pb-1 text-xs">
                       <button
@@ -456,12 +589,11 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Lista de Cartões com Indicador Visual */}
                 {loadingFuncionarios ? (
                   <p className="text-center py-10 text-slate-400">A carregar funcionários...</p>
                 ) : funcionariosFiltrados.length === 0 ? (
                   <div className="bg-white rounded-2xl p-8 text-center text-slate-400 border border-slate-200">
-                    Nenhum funcionário encontrado para os filtros selecionados.
+                    Nenhum funcionário encontrado.
                   </div>
                 ) : (
                   <div className="space-y-2.5">
@@ -478,9 +610,7 @@ export default function App() {
                           }`}
                         >
                           <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-slate-800 text-base">{func.nome}</span>
-                            </div>
+                            <span className="font-semibold text-slate-800 text-base">{func.nome}</span>
                             <p className="text-xs text-blue-600 font-medium mt-0.5">
                               {func.funcao_exercida || func.funcao_carteira}
                             </p>
@@ -491,7 +621,7 @@ export default function App() {
                             {auditado ? (
                               <>
                                 {renderBadgeStatus(auditoria.status)}
-                                <span className="text-[10px] text-slate-400">Tocar para alterar</span>
+                                <span className="text-[10px] text-slate-400">Alterar</span>
                               </>
                             ) : (
                               <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-full">
@@ -509,13 +639,13 @@ export default function App() {
           </>
         )}
 
-        {/* ABA: HISTÓRICO */}
-        {abaAtual === 'historico' && (
+        {/* ABA: HISTÓRICO / RELATÓRIO (APENAS ADMIN) */}
+        {abaAtual === 'historico' && ehAdmin && (
           <div className="space-y-4">
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
               <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Filtros do Relatório
+                  Filtros do Relatório Gerencial
                 </span>
                 <button
                   onClick={descarregarCSV}
@@ -592,9 +722,7 @@ export default function App() {
 
                     <div className="flex items-center justify-between text-[11px] text-slate-500 border-t border-slate-100 pt-1.5 mt-0.5">
                       <span>EPI: {item.epi_correto ? '✓ Conforme' : '✕ Irregular'}</span>
-                      <span>
-                        Registo: {new Date(item.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                      </span>
+                      <span>Fiscal: <strong>{item.fiscal?.nome_completo || 'Identificado'}</strong></span>
                     </div>
 
                     {item.detalhe_localizacao && (
@@ -613,7 +741,6 @@ export default function App() {
         {funcionarioAtivo && (
           <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-4 z-50">
             <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl p-6 shadow-2xl max-h-[92vh] overflow-y-auto">
-              {/* Topo do Modal */}
               <div className="flex justify-between items-start mb-3">
                 <div>
                   <h3 className="text-lg font-bold text-slate-800">{funcionarioAtivo.nome}</h3>
@@ -627,7 +754,6 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Informações Internas */}
               <div className="bg-slate-50 p-3 rounded-xl mb-4 text-xs space-y-1 text-slate-600 border border-slate-100">
                 <div className="flex justify-between">
                   <span className="text-slate-400">Código Interno:</span>
@@ -771,7 +897,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* CAMPO ESPECÍFICO SE CEDIDO OU OUTROS */}
               {(statusSelecionado === 'cedido' || statusSelecionado === 'outros') && (
                 <div className="space-y-1.5 mb-4 p-3 bg-amber-50 rounded-xl border border-amber-200">
                   <label className="text-xs font-bold text-amber-800 block">
@@ -792,7 +917,6 @@ export default function App() {
                 </div>
               )}
 
-              {/* GRANDE BOTÃO FINAL DE CONFIRMAÇÃO */}
               <div className="pt-2">
                 <button
                   type="button"
