@@ -109,10 +109,86 @@
 \pard\sl-520\sa160\partightenfactor0
 \ls11\ilvl0
 \fs34 \cf2 \up2 		Relat\'f3rio consolidado mensal por Conserv ou empresa para confer\'eancia de ponto/frequ\'eancia\
-\ls11\ilvl0\up0 		\
+\pard\sl-520\sa160\partightenfactor0
+\ls11\ilvl0\cf2 \up0 		\
 		\
 		outros:\up2  relat\'f3rio pdf\
-\ls11\ilvl0\up0 {\listtext		}2: faltou o historico de conserv de onde os funcion\'e1rios ja passaram (alterar banco de dados)\
-{\listtext		} \
+\ls11\ilvl0\up0 		2: faltou o historico de conserv de onde os funcion\'e1rios ja passaram (alterar banco de dados)\
+		 \
 		\up2 \
+\pard\sl-520\sa160\partightenfactor0
+\cf2 \
+\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\'97\
+\
+============================================================\
+           FISCALIZA RUA - STATUS & PEND\'caNCIAS\
+============================================================\
+\
+[ 1. O QUE J\'c1 FOI CONCLU\'cdDO (CHECKLIST ATUAL) ]\
+------------------------------------------------------------\
+\uc0\u10004  Autentica\'e7\'e3o e Perfis:\
+  - Fluxo de Login e Cadastro de usu\'e1rio via e-mail e senha.\
+  - Gatilho autom\'e1tico (trigger) no Supabase criando perfil na tabela `perfis`.\
+  - Novos cadastros entram como papel 'fiscal' e 'ativo = false'.\
+  - Tela de bloqueio ("Conta em An\'e1lise") para fiscais n\'e3o ativados.\
+  - Permiss\'f5es diferenciadas: perfil 'superadmin' / 'admin' com acesso total.\
+\
+\uc0\u10004  Seguran\'e7a e Auditoria:\
+  - Row Level Security (RLS) blindado em todas as tabelas.\
+  - V\'ednculo obrigat\'f3rio de `fiscal_id` (foreign key para `perfis.id`) em cada auditoria.\
+  - Fiscais s\'f3 conseguem gravar registros com o pr\'f3prio identificador.\
+  - Restri\'e7\'e3o de leitura da aba de Relat\'f3rios (exclusivo para Admins).\
+\
+\uc0\u10004  Opera\'e7\'e3o em Campo:\
+  - Sele\'e7\'e3o e troca r\'e1pida de Conservs ativos.\
+  - Listagem dos funcion\'e1rios do Conserv com filtros por texto (nome/empresa) e fun\'e7\'e3o exercida.\
+  - Indicador visual em tempo real no card: Pendente, Presente, Falta, Cedido, Folga, etc.\
+  - Barra de progresso di\'e1rio (auditados vs total de trabalhadores no setor).\
+  - Filtro r\'e1pido: Todos / Pendentes / Auditados.\
+  - Modal com detalhes do funcion\'e1rio, valida\'e7\'e3o de EPI e bot\'f5es de status.\
+  - Campo condicional para detalhe/motivo obrigat\'f3rio ao selecionar 'Cedido' ou 'Outros'.\
+  - Grande bot\'e3o final de confirma\'e7\'e3o para prevenir toques acidentais.\
+  - Sincroniza\'e7\'e3o via Supabase Realtime (se 2 fiscais atuam no mesmo setor, os status atualizam na hora em ambos os aparelhos).\
+\
+\uc0\u10004  Relat\'f3rios Gerenciais:\
+  - Visualiza\'e7\'e3o de auditorias por data e Conserv (para Administradores).\
+  - Identifica\'e7\'e3o de qual fiscal realizou o registro e hora exata.\
+  - Exporta\'e7\'e3o dos dados consolidados em arquivo CSV (Excel).\
+\
+\
+============================================================\
+[ 2. O QUE FALTA FAZER (PEND\'caNCIAS PRIORIT\'c1RIAS) ]\
+============================================================\
+\
+1. PAINEL DE ADMINISTRA\'c7\'c3O NO APP (SUPERADMIN / ADMIN)\
+   - [ ] Gest\'e3o de Acessos de Fiscais:\
+         * Aba no pr\'f3prio aplicativo para listar fiscais cadastrados.\
+         * Bot\'e3o direto para aprovar acesso ('ativo = true') e alternar pap\'e9is ('fiscal' / 'admin') sem depender de abrir o Supabase.\
+   - [ ] Gest\'e3o de Funcion\'e1rios (CRUD):\
+         * Formul\'e1rio para cadastrar novos funcion\'e1rios individualmente.\
+         * Edi\'e7\'e3o de dados (fun\'e7\'e3o exercida, empresa, troca de Conserv).\
+         * Inativa\'e7\'e3o / Demiss\'e3o (soft delete: 'ativo = false' + 'data_demissao'), mantendo o hist\'f3rico de auditorias passadas intacto.\
+   - [ ] Importa\'e7\'e3o em Lote via CSV:\
+         * Interface para upload do arquivo `.csv` oficial da prefeitura/empresa para carga inicial dos 1.500 oper\'e1rios.\
+\
+2. HIST\'d3RICO DE CONSERVS DOS FUNCION\'c1RIOS (ALTERA\'c7\'c3O DE BANCO)\
+   - [ ] Criar tabela `historico_conserv_funcionarios` (ou disparar trigger) para registrar transfer\'eancias:\
+         * Colunas: `id`, `funcionario_id`, `conserv_origem_id`, `conserv_destino_id`, `data_transferencia`, `observacao`.\
+   - [ ] Registrar automaticamente quando um trabalhador for transferido formalmente de setor ou quando for apontado como "Cedido" por per\'edodo cont\'ednuo.\
+\
+3. MELHORIAS OPERACIONAIS DE CAMPO\
+   - [ ] Navega\'e7\'e3o Cont\'ednua no Modal ("Pr\'f3ximo Funcion\'e1rio"):\
+         * Ap\'f3s confirmar o status de um oper\'e1rio, avan\'e7ar automaticamente para o pr\'f3ximo pendente do setor sem precisar voltar \'e0 lista.\
+   - [ ] Configura\'e7\'e3o PWA (Progressive Web App):\
+         * Configurar `vite-plugin-pwa`, manifest e service worker para permitir instala\'e7\'e3o como aplicativo nativo no celular e funcionamento em tela cheia na rua.\
+\
+4. RELAT\'d3RIOS E FECHAMENTO\
+   - [ ] Emiss\'e3o de Relat\'f3rio em PDF:\
+         * Gera\'e7\'e3o de documento PDF formatado (A4/paisagem) com cabe\'e7alho institucional, totalizadores (presentes, faltas, EPIs regulares) e espa\'e7o para assinatura da fiscaliza\'e7\'e3o/coordena\'e7\'e3o.\
+   - [ ] Relat\'f3rio Consolidado Mensal:\
+         * Fechamento mensal de assiduidade por empresa terceirizada para confer\'eancia de medi\'e7\'e3o e fatura.\
+\
+5. RECURSOS FUTUROS\
+   - [ ] Upload de Fotos no Supabase Storage:\
+         * Anexo de foto de rosto ou crach\'e1 do oper\'e1rio para confer\'eancia facial pelo fiscal em caso de d\'favida.\
 }
