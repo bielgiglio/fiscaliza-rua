@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from './lib/supabase'
 import Login from './components/Login'
 import AdminFiscais from './components/AdminFiscais'
-
+import AdminFuncionarios from './components/AdminFuncionarios'
 
 interface Conserv {
   id: string
@@ -73,6 +73,8 @@ export default function App() {
   const [conservFiltro, setConservFiltro] = useState<string>('todos')
 
   const ehAdmin = perfil?.papel === 'admin' || perfil?.papel === 'superadmin'
+
+  const [subAbaAdmin, setSubAbaAdmin] = useState<'fiscais' | 'funcionarios'>('fiscais')
 
   // Monitora Sessão
   useEffect(() => {
@@ -313,7 +315,7 @@ export default function App() {
 
     const colunas = ['Hora', 'Data', 'Funcionário', 'Código', 'Empresa', 'Conserv', 'Função', 'Estado', 'Detalhes', 'EPI Conforme', 'Fiscal Responsável']
     const linhas = historico.map((r) => [
-      new Date(r.created_at).toLocaleTimeString('pt-BR'),
+      new Date(r.created_at).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' }),
       r.data_referencia,
       `"${r.funcionario?.nome || ''}"`,
       `"${r.funcionario?.codigo || ''}"`,
@@ -444,7 +446,7 @@ export default function App() {
             </button>
           </div>
 
-          {/* Abas em Grade Perfeita */}
+          {/* Abas em Grade */}
           <div className={`grid gap-1.5 ${ehAdmin ? 'grid-cols-3' : 'grid-cols-1'}`}>
             <button
               onClick={() => setAbaAtual('fiscalizar')}
@@ -737,8 +739,14 @@ export default function App() {
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between text-[11px] text-slate-500 border-t border-slate-100 pt-1.5 mt-0.5">
-                      <span>EPI: {item.epi_correto ? '✓ Conforme' : '✕ Irregular'}</span>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-slate-500 border-t border-slate-100 pt-1.5 mt-0.5 gap-1">
+                      <div className="flex items-center gap-2">
+                        <span>EPI: {item.epi_correto ? '✓ Conforme' : '✕ Irregular'}</span>
+                        <span>•</span>
+                        <span>
+                          Hora: <strong>{new Date(item.created_at).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })}</strong>
+                        </span>
+                      </div>
                       <span>Fiscal: <strong>{item.fiscal?.nome_completo || 'Identificado'}</strong></span>
                     </div>
 
@@ -754,9 +762,34 @@ export default function App() {
           </div>
         )}
 
-        {/* ABA: ADMINISTRAÇÃO (APENAS ADMIN/SUPERADMIN) */}
+        {/* ABA: ADMINISTRAÇÃO (APENAS ADMIN/SUPERADMIN COM SUB-ABAS) */}
         {abaAtual === 'admin' && ehAdmin && (
-          <AdminFiscais />
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-2 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm">
+              <button
+                onClick={() => setSubAbaAdmin('fiscais')}
+                className={`py-2 text-xs font-bold rounded-xl transition ${
+                  subAbaAdmin === 'fiscais'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                Acessos e Fiscais
+              </button>
+              <button
+                onClick={() => setSubAbaAdmin('funcionarios')}
+                className={`py-2 text-xs font-bold rounded-xl transition ${
+                  subAbaAdmin === 'funcionarios'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                Quadro de Funcionários
+              </button>
+            </div>
+
+            {subAbaAdmin === 'fiscais' ? <AdminFiscais /> : <AdminFuncionarios />}
+          </div>
         )}
 
         {/* MODAL DE FISCALIZAÇÃO */}
