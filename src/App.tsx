@@ -3,6 +3,7 @@ import { supabase } from './lib/supabase'
 import Login from './components/Login'
 import AdminFiscais from './components/AdminFiscais'
 import AdminFuncionarios from './components/AdminFuncionarios'
+import AdminConservs from './components/AdminConservs'
 
 interface Conserv {
   id: string
@@ -74,7 +75,8 @@ export default function App() {
 
   const ehAdmin = perfil?.papel === 'admin' || perfil?.papel === 'superadmin'
 
-  const [subAbaAdmin, setSubAbaAdmin] = useState<'fiscais' | 'funcionarios'>('fiscais')
+  const [subAbaAdmin, setSubAbaAdmin] = useState<'fiscais' | 'funcionarios' | 'conservs'>('fiscais')
+
 
   // Monitora Sessão
   useEffect(() => {
@@ -765,30 +767,42 @@ export default function App() {
         {/* ABA: ADMINISTRAÇÃO (APENAS ADMIN/SUPERADMIN COM SUB-ABAS) */}
         {abaAtual === 'admin' && ehAdmin && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-2 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="grid grid-cols-3 gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm">
               <button
                 onClick={() => setSubAbaAdmin('fiscais')}
-                className={`py-2 text-xs font-bold rounded-xl transition ${
+                className={`py-2 text-[11px] sm:text-xs font-bold rounded-xl transition ${
                   subAbaAdmin === 'fiscais'
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
                 }`}
               >
-                Acessos e Fiscais
+                Fiscais
               </button>
               <button
                 onClick={() => setSubAbaAdmin('funcionarios')}
-                className={`py-2 text-xs font-bold rounded-xl transition ${
+                className={`py-2 text-[11px] sm:text-xs font-bold rounded-xl transition ${
                   subAbaAdmin === 'funcionarios'
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
                 }`}
               >
-                Quadro de Funcionários
+                Funcionários
+              </button>
+              <button
+                onClick={() => setSubAbaAdmin('conservs')}
+                className={`py-2 text-[11px] sm:text-xs font-bold rounded-xl transition ${
+                  subAbaAdmin === 'conservs'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                Setores
               </button>
             </div>
 
-            {subAbaAdmin === 'fiscais' ? <AdminFiscais /> : <AdminFuncionarios />}
+            {subAbaAdmin === 'fiscais' && <AdminFiscais />}
+            {subAbaAdmin === 'funcionarios' && <AdminFuncionarios />}
+            {subAbaAdmin === 'conservs' && <AdminConservs />}
           </div>
         )}
 
