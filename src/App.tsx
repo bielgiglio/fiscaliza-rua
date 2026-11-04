@@ -4,6 +4,7 @@ import Login from './components/Login'
 import AdminFiscais from './components/AdminFiscais'
 import AdminFuncionarios from './components/AdminFuncionarios'
 import AdminConservs from './components/AdminConservs'
+import { gerarRelatorioDiarioPDF } from './lib/gerarRelatorioPDF'
 
 interface Conserv {
   id: string
@@ -403,6 +404,22 @@ export default function App() {
     return reg.funcionario?.conserv?.nome === conservFiltro
   })
 
+  function descarregarPDF() {
+    if (historicoFiltrado.length === 0) {
+      alert('Não existem registos para exportar nesta seleção.')
+      return
+    }
+
+    const conservAtual = conservs.find((c) => c.nome === conservFiltro)
+
+    gerarRelatorioDiarioPDF({
+      registos: historicoFiltrado,
+      dataReferencia: dataFiltro,
+      setorNome: conservFiltro,
+      coordenadorNome: (conservAtual as any)?.coordenador_nome || undefined,
+    })
+  }
+
   function renderBadgeStatus(status: TipoStatus) {
     switch (status) {
       case 'presente':
@@ -668,12 +685,20 @@ export default function App() {
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
                   Filtros do Relatório Gerencial
                 </span>
-                <button
-                  onClick={descarregarCSV}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition"
-                >
-                  Descarregar Excel (CSV)
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={descarregarPDF}
+                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition active:scale-95"
+                  >
+                    Descarregar PDF
+                  </button>
+                  <button
+                    onClick={descarregarCSV}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition active:scale-95"
+                  >
+                    Descarregar Excel (CSV)
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
