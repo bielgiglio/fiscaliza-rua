@@ -204,6 +204,49 @@ export default function AdminFuncionarios() {
     return coincideTexto && coincideConserv && coincideStatus
   })
 
+  function exportarFuncionariosCSV() {
+    if (funcionariosFiltrados.length === 0) {
+      alert('Nenhum funcionário encontrado para exportar com os filtros atuais.')
+      return
+    }
+
+    const colunas = [
+      'Codigo',
+      'Nome',
+      'Empresa',
+      'Conserv',
+      'Funcao Exercida',
+      'Funcao Carteira',
+      'Situacao',
+      'Data Admissao',
+      'Data Demissao',
+    ]
+
+    const linhas = funcionariosFiltrados.map((f) => [
+      `"${f.codigo || ''}"`,
+      `"${f.nome}"`,
+      `"${f.empresa}"`,
+      `"${f.conserv?.nome || 'Não definido'}"`,
+      `"${f.funcao_exercida || ''}"`,
+      `"${f.funcao_carteira || ''}"`,
+      f.ativo ? 'ATIVO' : 'INATIVO',
+      f.data_admissao ? f.data_admissao.split('-').reverse().join('/') : '',
+      f.data_demissao ? f.data_demissao.split('-').reverse().join('/') : '',
+    ])
+
+    const conteudoCSV = [colunas.join(','), ...linhas.map((l) => l.join(','))].join('\n')
+    const blob = new Blob(['\ufeff' + conteudoCSV], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+
+    const dataHoje = new Date().toISOString().split('T')[0]
+    link.setAttribute('download', `quadro_funcionarios_${filtroStatus}_${dataHoje}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   return (
     <div className="space-y-4">
       {/* Barra de Ações e Filtros */}
@@ -214,12 +257,17 @@ export default function AdminFuncionarios() {
               Gestão do Quadro de Funcionários
             </h2>
             <p className="text-xs text-slate-500">
-              Cadastre, transfira de setor ou informe desligamentos
+              Cadastre, exporte, transfira de setor ou informe desligamentos
             </p>
           </div>
 
-          {/* PASSO 3: Botões de Importar CSV e Novo Funcionário */}
-          <div className="flex gap-2 shrink-0">
+          <div className="flex flex-wrap gap-2 shrink-0">
+            <button
+              onClick={exportarFuncionariosCSV}
+              className="bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold px-3 py-2.5 rounded-xl shadow-sm transition active:scale-95"
+            >
+              Exportar CSV
+            </button>
             <button
               onClick={() => setModalCSVAberto(true)}
               className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2.5 rounded-xl shadow-sm transition active:scale-95"
@@ -543,7 +591,7 @@ export default function AdminFuncionarios() {
         </div>
       )}
 
-      {/* PASSO 4: Modal de Importação em Lote via CSV */}
+      {/* Modal de Importação em Lote via CSV */}
       {modalCSVAberto && (
         <ImportarCSV
           conservs={conservs}

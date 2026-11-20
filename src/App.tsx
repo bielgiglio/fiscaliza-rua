@@ -4,11 +4,13 @@ import Login from './components/Login'
 import AdminFiscais from './components/AdminFiscais'
 import AdminFuncionarios from './components/AdminFuncionarios'
 import AdminConservs from './components/AdminConservs'
-import { gerarRelatorioDiarioPDF } from './lib/gerarRelatorioPDF'
+import { gerarRelatorioPeriodoPDF } from './lib/gerarRelatorioPDF'
+import HistoricoFuncionario from './components/HistoricoFuncionario'
 
 interface Conserv {
   id: string
   nome: string
+  coordenador_nome?: string | null
 }
 
 interface Funcionario {
@@ -39,6 +41,7 @@ interface RegistoHistorico {
     funcao_exercida: string
     conserv: {
       nome: string
+      coordenador_nome?: string | null
     }
   }
 }
@@ -71,13 +74,16 @@ export default function App() {
 
   const [historico, setHistorico] = useState<RegistoHistorico[]>([])
   const [loadingHistorico, setLoadingHistorico] = useState(false)
-  const [dataFiltro, setDataFiltro] = useState(new Date().toISOString().split('T')[0])
+
+  const hojeISO = new Date().toISOString().split('T')[0]
+  const [dataInicioFiltro, setDataInicioFiltro] = useState(hojeISO)
+  const [dataFimFiltro, setDataFimFiltro] = useState(hojeISO)
   const [conservFiltro, setConservFiltro] = useState<string>('todos')
 
   const ehAdmin = perfil?.papel === 'admin' || perfil?.papel === 'superadmin'
 
   const [subAbaAdmin, setSubAbaAdmin] = useState<'fiscais' | 'funcionarios' | 'conservs'>('fiscais')
-
+  const [subAbaRelatorio, setSubAbaRelatorio] = useState<'diario' | 'individual'>('diario')
 
   // Monitora Sessão
   useEffect(() => {
@@ -116,14 +122,14 @@ export default function App() {
     }
   }, [])
 
-  // Carrega Conservs
+  // Carrega Conservs (incluindo coordenador_nome)
   useEffect(() => {
     if (!usuario || !perfil?.ativo) return
 
     async function carregarConservs() {
       const { data, error } = await supabase
         .from('conservs')
-        .select('id, nome')
+        .select('id, nome, coordenador_nome')
         .eq('ativo', true)
         .order('nome')
 
@@ -285,10 +291,12 @@ export default function App() {
             codigo,
             empresa,
             funcao_exercida,
-            conserv:conservs ( nome )
+            conserv:conservs ( nome, coordenador_nome )
           )
         `)
-        .eq('data_referencia', dataFiltro)
+        .gte('data_referencia', dataInicioFiltro)
+        .lte('data_referencia', dataFimFiltro)
+        .order('data_referencia', { ascending: false })
         .order('created_at', { ascending: false })
 
       if (error) {
@@ -305,21 +313,21 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (abaAtual === 'historico' && ehAdmin) {
+    if (abaAtual === 'historico' && ehAdmin && subAbaRelatorio === 'diario') {
       carregarHistorico()
     }
-  }, [abaAtual, dataFiltro, ehAdmin])
+  }, [abaAtual, dataInicioFiltro, dataFimFiltro, ehAdmin, subAbaRelatorio])
 
   function descarregarCSV() {
-    if (historico.length === 0) {
-      alert('Sem dados disponíveis para exportar nesta data.')
+    if (historicoFiltrado.length === 0) {
+      alert('Sem dados disponíveis para exportar nesta seleção.')
       return
     }
 
     const colunas = ['Hora', 'Data', 'Funcionário', 'Código', 'Empresa', 'Conserv', 'Função', 'Estado', 'Detalhes', 'EPI Conforme', 'Fiscal Responsável']
-    const linhas = historico.map((r) => [
+    const linhas = historicoFiltrado.map((r) => [
       new Date(r.created_at).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' }),
-      r.data_referencia,
+      r.data_referencia.split('-').reverse().join('/'),
       `"${r.funcionario?.nome || ''}"`,
       `"${r.funcionario?.codigo || ''}"`,
       `"${r.funcionario?.empresa || ''}"`,
@@ -336,7 +344,13 @@ export default function App() {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.setAttribute('download', `relatorio_fiscalizacao_${dataFiltro}.csv`)
+
+    const nomeArquivo =
+      dataInicioFiltro === dataFimFiltro
+        ? `relatorio_fiscalizacao_${dataInicioFiltro}.csv`
+        : `relatorio_fiscalizacao_${dataInicioFiltro}_a_${dataFimFiltro}.csv`
+
+    link.setAttribute('download', nomeArquivo)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -412,11 +426,12 @@ export default function App() {
 
     const conservAtual = conservs.find((c) => c.nome === conservFiltro)
 
-    gerarRelatorioDiarioPDF({
+    gerarRelatorioPeriodoPDF({
       registos: historicoFiltrado,
-      dataReferencia: dataFiltro,
+      dataInicio: dataInicioFiltro,
+      dataFim: dataFimFiltro,
       setorNome: conservFiltro,
-      coordenadorNome: (conservAtual as any)?.coordenador_nome || undefined,
+      coordenadorNome: conservAtual?.coordenador_nome || undefined,
     })
   }
 
@@ -524,9 +539,16 @@ export default function App() {
                       onClick={() => abrirConserv(c)}
                       className="w-full text-left p-4 rounded-xl border border-slate-200 hover:border-blue-500 hover:bg-blue-50/50 flex justify-between items-center transition group"
                     >
-                      <span className="font-medium text-slate-700 group-hover:text-blue-700">
-                        {c.nome}
-                      </span>
+                      <div>
+                        <span className="font-medium text-slate-700 group-hover:text-blue-700 block">
+                          {c.nome}
+                        </span>
+                        {c.coordenador_nome && (
+                          <span className="text-[11px] text-slate-400">
+                            Coord.: {c.coordenador_nome}
+                          </span>
+                        )}
+                      </div>
                       <span className="text-xs bg-emerald-100 text-emerald-800 font-medium px-2.5 py-1 rounded-full">
                         Aceder &rarr;
                       </span>
@@ -680,111 +702,157 @@ export default function App() {
         {/* ABA: HISTÓRICO / RELATÓRIO (APENAS ADMIN) */}
         {abaAtual === 'historico' && ehAdmin && (
           <div className="space-y-4">
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-              <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Filtros do Relatório Gerencial
-                </span>
-                <div className="flex gap-2">
-                  <button
-                    onClick={descarregarPDF}
-                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition active:scale-95"
-                  >
-                    Descarregar PDF
-                  </button>
-                  <button
-                    onClick={descarregarCSV}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition active:scale-95"
-                  >
-                    Descarregar Excel (CSV)
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                <div>
-                  <label className="text-slate-500 font-medium block mb-1">Data:</label>
-                  <input
-                    type="date"
-                    value={dataFiltro}
-                    onChange={(e) => setDataFiltro(e.target.value)}
-                    className="w-full p-2 border border-slate-200 rounded-lg text-slate-700 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="text-slate-500 font-medium block mb-1">Setor (Conserv):</label>
-                  <select
-                    value={conservFiltro}
-                    onChange={(e) => setConservFiltro(e.target.value)}
-                    className="w-full p-2 border border-slate-200 rounded-lg text-slate-700 focus:outline-none bg-white"
-                  >
-                    <option value="todos">Todos os setores</option>
-                    {conservs.map((c) => (
-                      <option key={c.id} value={c.nome}>
-                        {c.nome}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+            {/* Seletor entre Relatório por Período e Dossiê Individual */}
+            <div className="grid grid-cols-2 gap-2 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm">
+              <button
+                onClick={() => setSubAbaRelatorio('diario')}
+                className={`py-2 text-xs font-bold rounded-xl transition ${
+                  subAbaRelatorio === 'diario'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                Relatório por Período
+              </button>
+              <button
+                onClick={() => setSubAbaRelatorio('individual')}
+                className={`py-2 text-xs font-bold rounded-xl transition ${
+                  subAbaRelatorio === 'individual'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                Histórico por Funcionário
+              </button>
             </div>
 
-            {loadingHistorico ? (
-              <p className="text-center py-10 text-slate-400">A carregar dados do histórico...</p>
-            ) : historicoFiltrado.length === 0 ? (
-              <div className="bg-white rounded-2xl p-8 text-center text-slate-400 border border-slate-200">
-                Nenhum registo de fiscalização encontrado nesta data.
-              </div>
+            {subAbaRelatorio === 'individual' ? (
+              <HistoricoFuncionario />
             ) : (
-              <div className="space-y-2">
-                {historicoFiltrado.map((item) => (
-                  <div
-                    key={item.id}
-                    className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-1.5"
-                  >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <span className="font-semibold text-slate-800 text-sm">
-                          {item.funcionario?.nome}
-                        </span>
-                        <p className="text-[11px] text-slate-500">
-                          {item.funcionario?.conserv?.nome} • {item.funcionario?.funcao_exercida}
-                        </p>
-                      </div>
-                      <span
-                        className={`text-[11px] font-bold px-2 py-0.5 rounded-full uppercase ${
-                          item.status === 'presente'
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : item.status === 'falta'
-                            ? 'bg-rose-100 text-rose-800'
-                            : item.status === 'cedido' || item.status === 'outros'
-                            ? 'bg-amber-100 text-amber-800'
-                            : 'bg-slate-100 text-slate-800'
-                        }`}
+              <>
+                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                  <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                      Filtros do Relatório Gerencial
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={descarregarPDF}
+                        className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition active:scale-95"
                       >
-                        {item.status}
-                      </span>
+                        Descarregar PDF
+                      </button>
+                      <button
+                        onClick={descarregarCSV}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition active:scale-95"
+                      >
+                        Descarregar Excel (CSV)
+                      </button>
                     </div>
-
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-slate-500 border-t border-slate-100 pt-1.5 mt-0.5 gap-1">
-                      <div className="flex items-center gap-2">
-                        <span>EPI: {item.epi_correto ? '✓ Conforme' : '✕ Irregular'}</span>
-                        <span>•</span>
-                        <span>
-                          Hora: <strong>{new Date(item.created_at).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })}</strong>
-                        </span>
-                      </div>
-                      <span>Fiscal: <strong>{item.fiscal?.nome_completo || 'Identificado'}</strong></span>
-                    </div>
-
-                    {item.detalhe_localizacao && (
-                      <p className="text-[11px] text-amber-700 bg-amber-50 p-1.5 rounded-md">
-                        <strong>Obs/Destino:</strong> {item.detalhe_localizacao}
-                      </p>
-                    )}
                   </div>
-                ))}
-              </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                    <div>
+                      <label className="text-slate-500 font-medium block mb-1">Data Inicial:</label>
+                      <input
+                        type="date"
+                        value={dataInicioFiltro}
+                        onChange={(e) => {
+                          setDataInicioFiltro(e.target.value)
+                          if (e.target.value > dataFimFiltro) {
+                            setDataFimFiltro(e.target.value)
+                          }
+                        }}
+                        className="w-full p-2 border border-slate-200 rounded-lg text-slate-700 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-500 font-medium block mb-1">Data Final:</label>
+                      <input
+                        type="date"
+                        value={dataFimFiltro}
+                        min={dataInicioFiltro}
+                        onChange={(e) => setDataFimFiltro(e.target.value)}
+                        className="w-full p-2 border border-slate-200 rounded-lg text-slate-700 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-500 font-medium block mb-1">Setor (Conserv):</label>
+                      <select
+                        value={conservFiltro}
+                        onChange={(e) => setConservFiltro(e.target.value)}
+                        className="w-full p-2 border border-slate-200 rounded-lg text-slate-700 focus:outline-none bg-white"
+                      >
+                        <option value="todos">Todos os setores</option>
+                        {conservs.map((c) => (
+                          <option key={c.id} value={c.nome}>
+                            {c.nome}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {loadingHistorico ? (
+                  <p className="text-center py-10 text-slate-400">A carregar dados do histórico...</p>
+                ) : historicoFiltrado.length === 0 ? (
+                  <div className="bg-white rounded-2xl p-8 text-center text-slate-400 border border-slate-200">
+                    Nenhum registo de fiscalização encontrado neste período.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {historicoFiltrado.map((item) => (
+                      <div
+                        key={item.id}
+                        className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-1.5"
+                      >
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <span className="font-semibold text-slate-800 text-sm">
+                              {item.funcionario?.nome}
+                            </span>
+                            <p className="text-[11px] text-slate-500">
+                              {item.funcionario?.conserv?.nome} • {item.funcionario?.funcao_exercida}
+                            </p>
+                          </div>
+                          <span
+                            className={`text-[11px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                              item.status === 'presente'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : item.status === 'falta'
+                                ? 'bg-rose-100 text-rose-800'
+                                : item.status === 'cedido' || item.status === 'outros'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-slate-100 text-slate-800'
+                            }`}
+                          >
+                            {item.status}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[11px] text-slate-500 border-t border-slate-100 pt-1.5 mt-0.5 gap-1">
+                          <div className="flex items-center gap-2">
+                            <span>EPI: {item.epi_correto ? '✓ Conforme' : '✕ Irregular'}</span>
+                            <span>•</span>
+                            <span>
+                              Data: <strong>{item.data_referencia.split('-').reverse().join('/')}</strong> às{' '}
+                              <strong>{new Date(item.created_at).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })}</strong>
+                            </span>
+                          </div>
+                          <span>Fiscal: <strong>{item.fiscal?.nome_completo || 'Identificado'}</strong></span>
+                        </div>
+
+                        {item.detalhe_localizacao && (
+                          <p className="text-[11px] text-amber-700 bg-amber-50 p-1.5 rounded-md">
+                            <strong>Obs/Destino:</strong> {item.detalhe_localizacao}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
