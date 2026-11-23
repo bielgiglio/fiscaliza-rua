@@ -8,126 +8,111 @@ interface Conserv {
 
 interface ImportarCSVProps {
   conservs: Conserv[]
-  onConcluido: () => void
   onFechar: () => void
+  onConcluido: () => void
 }
 
-export default function ImportarCSV({ conservs, onConcluido, onFechar }: ImportarCSVProps) {
-  const [ficheiro, setFicheiro] = useState<File | null>(null)
-  const [conservIdPadrao, setConservIdPadrao] = useState<string>(conservs[0]?.id || '')
-  const [importando, setImportando] = useState(false)
-  const [progresso, setProgresso] = useState<string>('')
-  const [relatorioErro, setRelatorioErro] = useState<string | null>(null)
+export default function ImportarCSV({ conservs, onFechar, onConcluido }: ImportarCSVProps) {
+  const [conservPadraoId, setConservPadraoId] = useState(conservs[0]?.id || '')
+  const [arquivo, setArquivo] = useState<File | null>(null)
+  const [processando, setProcessando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
 
-  function lidarComFicheiro(e: React.ChangeEvent<HTMLInputElement>) {
-    if (e.target.files && e.target.files[0]) {
-      setFicheiro(e.target.files[0])
-      setRelatorioErro(null)
-    }
+  function normalizarTexto(str: string) {
+    return str
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim()
   }
 
-  function dividirLinhaCSV(linha: string): string[] {
-    const regex = /(?:,|\n|^)("(?:(?:"")*[^"]*)*"|[^",\n]*|(?:\n|$))/g
-    const valores: string[] = []
-    let correspondencia: RegExpExecArray | null
-
-    while ((correspondencia = regex.exec(linha)) !== null) {
-      let val = correspondencia[1] || ''
-      if (val.startsWith('"') && val.endsWith('"')) {
-        val = val.substring(1, val.length - 1).replace(/""/g, '"')
-      }
-      valores.push(val.trim())
-      if (regex.lastIndex >= linha.length) break
-    }
-    return valores
-  }
-
-  async function processarEImportar() {
-    if (!ficheiro) {
-      alert('Por favor, selecione um ficheiro .csv')
+  async function processarImportacao(e: React.FormEvent) {
+    e.preventDefault()
+    if (!arquivo) {
+      setErro('Selecione um ficheiro .csv antes de importar.')
       return
     }
 
-    setImportando(true)
-    setRelatorioErro(null)
-    setProgresso('A ler ficheiro...')
+    setProcessando(true)
+    setErro(null)
 
     try {
-      const texto = await ficheiro.text()
-      const linhas = texto.split(/\r?\n/).filter((l) => l.trim().length > 0)
+      const texto = await arquivo.text()
+      const linhas = texto
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean)
 
       if (linhas.length < 2) {
-        throw new Error('O ficheiro CSV está vazio ou contém apenas o cabeçalho.')
+        throw new Error('O ficheiro está vazio ou contém apenas o cabeçalho.')
       }
 
-      const cabecalho = dividirLinhaCSV(linhas[0]).map((c) =>
-        c.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
-      )
+      // Detecta automaticamente se o separador é ';' ou ','
+      const separador = linhas[0].includes(';') ? ';' : ','
 
-      const idxNome = cabecalho.findIndex((c) => c.includes('nome'))
-      const idxCodigo = cabecalho.findIndex((c) => c.includes('codigo') || c.includes('matricula'))
-      const idxEmpresa = cabecalho.findIndex((c) => c.includes('empresa'))
-      const idxFuncao = cabecalho.findIndex((c) => c.includes('funcao') || c.includes('cargo'))
-      const idxConserv = cabecalho.findIndex((c) => c.includes('conserv') || c.includes('setor'))
+      const cabecalhos = linhas[0].split(separador).map((c) => normalizarTexto(c.replace(/^"|"$/g, '')))
+
+      const idxNome = cabecalhos.findIndex((c) => c === 'nome')
+      const idxCodigo = cabecalhos.findIndex((c) => c.includes('codigo') || c.includes('matricula'))
+      const idxFuncao = cabecalhos.findIndex((c) => c.includes('funcao'))
+      const idxEmpresa = cabecalhos.findIndex((c) => c.includes('empresa'))
+      const idxConserv = cabecalhos.findIndex((c) => c.includes('conserv') || c.includes('setor'))
 
       if (idxNome === -1) {
-        throw new Error('Coluna de "Nome" não encontrada no cabeçalho do CSV.')
+        throw new Error('Coluna obrigatória "Nome" não encontrada no cabeçalho do CSV.')
       }
 
-      const listaParaInserir: any[] = []
-      const mapaConservsPorNome = new Map(
-        conservs.map((c) => [c.nome.toLowerCase().trim(), c.id])
-      )
+      const dataHoje = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
+      const registrosParaInserir = []
 
       for (let i = 1; i < linhas.length; i++) {
-        const valores = dividirLinhaCSV(linhas[i])
-        const nome = valores[idxNome]
-
+        const colunas = linhas[i].split(separador).map((val) => val.replace(/^"|"$/g, '').trim())
+        const nome = colunas[idxNome]
         if (!nome) continue
 
-        const codigo = idxCodigo !== -1 && valores[idxCodigo] ? valores[idxCodigo] : null
-        const empresa = idxEmpresa !== -1 && valores[idxEmpresa] ? valores[idxEmpresa] : 'Prefeitura / Terceirizada'
-        const funcao = idxFuncao !== -1 && valores[idxFuncao] ? valores[idxFuncao] : 'Operador de Serviços Gerais'
+        const codigo = idxCodigo !== -1 && colunas[idxCodigo] ? colunas[idxCodigo] : null
+        const funcao = idxFuncao !== -1 && colunas[idxFuncao] ? colunas[idxFuncao] : 'Operacional'
+        const empresa = idxEmpresa !== -1 && colunas[idxEmpresa] ? colunas[idxEmpresa] : 'Prefeitura / Terceirizada'
 
-        let conservIdFinal = conservIdPadrao
-        if (idxConserv !== -1 && valores[idxConserv]) {
-          const nomeSetorCsv = valores[idxConserv].toLowerCase().trim()
-          const idEncontrado = mapaConservsPorNome.get(nomeSetorCsv)
-          if (idEncontrado) {
-            conservIdFinal = idEncontrado
+        let conservFinalId = conservPadraoId
+        if (idxConserv !== -1 && colunas[idxConserv]) {
+          const nomeSetorCSV = normalizarTexto(colunas[idxConserv])
+          const setorEncontrado = conservs.find((c) => normalizarTexto(c.nome) === nomeSetorCSV)
+          if (setorEncontrado) {
+            conservFinalId = setorEncontrado.id
           }
         }
 
-        listaParaInserir.push({
-          codigo,
+        registrosParaInserir.push({
           nome,
-          empresa,
-          funcao_carteira: funcao,
+          codigo,
           funcao_exercida: funcao,
-          data_admissao: new Date().toISOString().split('T')[0],
-          conserv_id: conservIdFinal,
+          funcao_carteira: funcao,
+          empresa,
+          conserv_id: conservFinalId,
+          data_admissao: dataHoje,
           ativo: true,
         })
       }
 
-      setProgresso(`A gravar ${listaParaInserir.length} funcionários...`)
-
-      const tamanhoLote = 100
-      for (let i = 0; i < listaParaInserir.length; i += tamanhoLote) {
-        const lote = listaParaInserir.slice(i, i + tamanhoLote)
-        const { error } = await supabase.from('funcionarios').insert(lote)
-        if (error) throw error
-        setProgresso(`A carregar: ${Math.min(i + tamanhoLote, listaParaInserir.length)} / ${listaParaInserir.length}`)
+      if (registrosParaInserir.length === 0) {
+        throw new Error('Nenhum funcionário válido encontrado nas linhas do arquivo.')
       }
 
-      alert(`Sucesso! ${listaParaInserir.length} funcionários importados.`)
+      // Envia em lotes de 100 registros
+      const tamanhoLote = 100
+      for (let i = 0; i < registrosParaInserir.length; i += tamanhoLote) {
+        const lote = registrosParaInserir.slice(i, i + tamanhoLote)
+        const { error: insertError } = await supabase.from('funcionarios').insert(lote)
+        if (insertError) throw insertError
+      }
+
+      alert(`${registrosParaInserir.length} funcionários importados com sucesso!`)
       onConcluido()
     } catch (err: any) {
-      console.error(err)
-      setRelatorioErro(err.message || 'Erro ao processar ficheiro CSV.')
+      setErro(err.message || 'Erro ao processar arquivo CSV.')
     } finally {
-      setImportando(false)
-      setProgresso('')
+      setProcessando(false)
     }
   }
 
@@ -141,29 +126,27 @@ export default function ImportarCSV({ conservs, onConcluido, onFechar }: Importa
           </div>
           <button
             onClick={onFechar}
-            disabled={importando}
             className="text-slate-400 hover:text-slate-600 text-xl font-bold p-1 leading-none"
           >
             ✕
           </button>
         </div>
 
-        {relatorioErro && (
-          <div className="bg-rose-50 border border-rose-200 text-rose-700 p-3 rounded-xl text-xs">
-            {relatorioErro}
+        {erro && (
+          <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs">
+            {erro}
           </div>
         )}
 
-        <div className="space-y-3">
+        <form onSubmit={processarImportacao} className="space-y-4">
           <div>
             <label className="text-xs font-semibold text-slate-700 block mb-1">
               Setor padrão de destino (se não vier no CSV):
             </label>
             <select
-              value={conservIdPadrao}
-              onChange={(e) => setConservIdPadrao(e.target.value)}
-              disabled={importando}
-              className="w-full p-2.5 rounded-xl border border-slate-200 text-xs text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={conservPadraoId}
+              onChange={(e) => setConservPadraoId(e.target.value)}
+              className="w-full p-2.5 rounded-xl border border-slate-200 text-xs text-slate-700 bg-white focus:outline-none"
             >
               {conservs.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -180,35 +163,19 @@ export default function ImportarCSV({ conservs, onConcluido, onFechar }: Importa
             <input
               type="file"
               accept=".csv"
-              onChange={lidarComFicheiro}
-              disabled={importando}
-              className="w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer border border-slate-200 rounded-xl p-1"
+              onChange={(e) => setArquivo(e.target.files?.[0] || null)}
+              className="w-full text-xs text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 border border-slate-200 rounded-xl p-1.5"
             />
           </div>
 
-          <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 text-[11px] text-slate-500 space-y-1">
-            <span className="font-semibold text-slate-700 block">Formato recomendado:</span>
-            <p>• <strong>Nome</strong> (Obrigatório)</p>
-            <p>• <strong>Matrícula / Código</strong> (Opcional)</p>
-            <p>• <strong>Função</strong> (Opcional)</p>
-            <p>• <strong>Empresa</strong> (Opcional)</p>
-            <p>• <strong>Conserv</strong> (Opcional)</p>
-          </div>
-
-          {progresso && (
-            <p className="text-xs text-center font-bold text-blue-600 animate-pulse">{progresso}</p>
-          )}
-
-          <div className="pt-2">
-            <button
-              onClick={processarEImportar}
-              disabled={!ficheiro || importando}
-              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow-sm disabled:opacity-50"
-            >
-              {importando ? 'A processar...' : 'Importar Funcionários'}
-            </button>
-          </div>
-        </div>
+          <button
+            type="submit"
+            disabled={processando}
+            className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow-sm disabled:opacity-50"
+          >
+            {processando ? 'A importar funcionários...' : 'Importar Funcionários'}
+          </button>
+        </form>
       </div>
     </div>
   )
