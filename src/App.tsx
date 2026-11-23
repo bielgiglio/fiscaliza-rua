@@ -6,6 +6,7 @@ import AdminFuncionarios from './components/AdminFuncionarios'
 import AdminConservs from './components/AdminConservs'
 import { gerarRelatorioPeriodoPDF } from './lib/gerarRelatorioPDF'
 import HistoricoFuncionario from './components/HistoricoFuncionario'
+import { obterDataHojeSP } from './lib/dataLocal'
 
 interface Conserv {
   id: string
@@ -75,7 +76,7 @@ export default function App() {
   const [historico, setHistorico] = useState<RegistoHistorico[]>([])
   const [loadingHistorico, setLoadingHistorico] = useState(false)
 
-  const hojeISO = new Date().toISOString().split('T')[0]
+  const hojeISO = obterDataHojeSP()
   const [dataInicioFiltro, setDataInicioFiltro] = useState(hojeISO)
   const [dataFimFiltro, setDataFimFiltro] = useState(hojeISO)
   const [conservFiltro, setConservFiltro] = useState<string>('todos')
@@ -143,7 +144,7 @@ export default function App() {
   useEffect(() => {
     if (!conservSelecionado) return
 
-    const dataHoje = new Date().toISOString().split('T')[0]
+    const dataHoje = obterDataHojeSP()
 
     const channel = supabase
       .channel('fiscalizacoes_hoje')
@@ -181,7 +182,7 @@ export default function App() {
     setFiltroFuncao('todas')
     setFiltroAuditoria('todos')
 
-    const dataHoje = new Date().toISOString().split('T')[0]
+    const dataHoje = obterDataHojeSP()
 
     const { data: funcsData } = await supabase
       .from('funcionarios')
@@ -238,7 +239,7 @@ export default function App() {
     }
 
     setSalvando(true)
-    const dataHoje = new Date().toISOString().split('T')[0]
+    const dataHoje = obterDataHojeSP()
 
     const payload = {
       funcionario_id: funcionarioAtivo.id,
@@ -247,6 +248,7 @@ export default function App() {
       detalhe_localizacao: detalheLocal.trim() || null,
       epi_correto: epiCorreto,
       fiscal_id: usuario.id,
+      created_at: new Date().toISOString(),
     }
 
     const { error } = await supabase
