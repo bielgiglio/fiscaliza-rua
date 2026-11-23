@@ -1,29 +1,42 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-interface PerfilUsuario {
+interface PerfilFiscal {
   id: string
   nome_completo: string
   papel: 'fiscal' | 'admin' | 'superadmin'
   ativo: boolean
-  created_at: string
+  created_at?: string
 }
 
 export default function AdminFiscais() {
-  const [fiscais, setFiscais] = useState<PerfilUsuario[]>([])
+  const [fiscais, setFiscais] = useState<PerfilFiscal[]>([])
+  const [meuId, setMeuId] = useState<string | null>(null)
+  const [meuPapel, setMeuPapel] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [atualizandoId, setAtualizandoId] = useState<string | null>(null)
-  const [filtro, setFiltro] = useState<'todos' | 'pendentes' | 'ativos'>('pendentes')
+  const [processandoId, setProcessandoId] = useState<string | null>(null)
 
   async function carregarFiscais() {
     setLoading(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      setMeuId(user.id)
+      const { data: meuPerfil } = await supabase
+        .from('perfis')
+        .select('papel')
+        .eq('id', user.id)
+        .single()
+      if (meuPerfil) setMeuPapel(meuPerfil.papel)
+    }
+
     const { data, error } = await supabase
       .from('perfis')
-      .select('id, nome_completo, papel, ativo, created_at')
-      .order('created_at', { ascending: false })
+      .select('*')
+      .order('ativo', { ascending: true })
+      .order('nome_completo', { ascending: true })
 
     if (!error && data) {
-      setFiscais(data as PerfilUsuario[])
+      setFiscais(data as PerfilFiscal[])
     }
     setLoading(false)
   }
@@ -32,185 +45,149 @@ export default function AdminFiscais() {
     carregarFiscais()
   }, [])
 
-  async function alternarStatus(perfil: PerfilUsuario) {
-    setAtualizandoId(perfil.id)
-    const novoStatus = !perfil.ativo
-
+  async function alternarStatus(fiscal: PerfilFiscal) {
+    setProcessandoId(fiscal.id)
     const { error } = await supabase
       .from('perfis')
-      .update({ ativo: novoStatus })
-      .eq('id', perfil.id)
+      .update({ ativo: !fiscal.ativo })
+      .eq('id', fiscal.id)
 
-    setAtualizandoId(null)
-
+    setProcessandoId(null)
     if (error) {
-      alert(`Erro ao atualizar fiscal: ${error.message}`)
+      alert(`Erro ao atualizar status: ${error.message}`)
       return
     }
-
-    setFiscais((prev) =>
-      prev.map((f) => (f.id === perfil.id ? { ...f, ativo: novoStatus } : f))
-    )
+    carregarFiscais()
   }
 
-  async function alterarPapel(id: string, novoPapel: 'fiscal' | 'admin') {
-    setAtualizandoId(id)
-
+  async function alterarPapel(fiscal: PerfilFiscal, novoPapel: 'fiscal' | 'admin' | 'superadmin') {
+    setProcessandoId(fiscal.id)
     const { error } = await supabase
       .from('perfis')
       .update({ papel: novoPapel })
-      .eq('id', id)
+      .eq('id', fiscal.id)
 
-    setAtualizandoId(null)
-
+    setProcessandoId(null)
     if (error) {
       alert(`Erro ao alterar papel: ${error.message}`)
       return
     }
-
-    setFiscais((prev) =>
-      prev.map((f) => (f.id === id ? { ...f, papel: novoPapel } : f))
-    )
+    carregarFiscais()
   }
 
-  const fiscaisFiltrados = fiscais.filter((f) => {
-    if (filtro === 'pendentes') return !f.ativo
-    if (filtro === 'ativos') return f.ativo
-    return true
-  })
+  async function excluirFiscal(fiscal: PerfilFiscal) {
+    if (fiscal.id === meuId) {
+      alert('Você não pode excluir sua própria conta.')
+      return
+    }
 
-  const totalPendentes = fiscais.filter((f) => !f.ativo).length
+    const confirmou = window.confirm(
+      `Tem certeza que deseja EXCLUIR permanentemente o usuário "${fiscal.nome_completo}"?\n\nEsta ação removerá o cadastro e o login do sistema.`
+    )
+    if (!confirmou) return
+
+    setProcessandoId(fiscal.id)
+    const { error } = await supabase.rpc('excluir_fiscal_completo', {
+      target_user_id: fiscal.id,
+    })
+    setProcessandoId(null)
+
+    if (error) {
+      alert(`Erro ao excluir fiscal: ${error.message}`)
+      return
+    }
+
+    setFiscais((prev) => prev.filter((f) => f.id !== fiscal.id))
+  }
+
+  if (loading) {
+    return <p className="text-center py-8 text-slate-400 text-xs">A carregar equipa de fiscais...</p>
+  }
 
   return (
-    <div className="space-y-4">
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-        <div>
-          <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
-            Controle de Acesso de Fiscais
-          </h2>
-          <p className="text-xs text-slate-500">
-            Aprove o acesso de novos fiscais ou desative contas
-          </p>
-        </div>
-
-        <div className="flex gap-1.5 bg-slate-100 p-1 rounded-xl text-xs font-semibold">
-          <button
-            onClick={() => setFiltro('pendentes')}
-            className={`px-3 py-1.5 rounded-lg transition ${
-              filtro === 'pendentes'
-                ? 'bg-amber-500 text-white shadow-sm'
-                : 'text-slate-600 hover:text-slate-800'
-            }`}
-          >
-            Pendentes ({totalPendentes})
-          </button>
-          <button
-            onClick={() => setFiltro('ativos')}
-            className={`px-3 py-1.5 rounded-lg transition ${
-              filtro === 'ativos'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-slate-600 hover:text-slate-800'
-            }`}
-          >
-            Ativos ({fiscais.filter((f) => f.ativo).length})
-          </button>
-          <button
-            onClick={() => setFiltro('todos')}
-            className={`px-3 py-1.5 rounded-lg transition ${
-              filtro === 'todos'
-                ? 'bg-slate-800 text-white shadow-sm'
-                : 'text-slate-600 hover:text-slate-800'
-            }`}
-          >
-            Todos ({fiscais.length})
-          </button>
-        </div>
+    <div className="space-y-3">
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+          Gestão de Fiscais e Acessos ({fiscais.length})
+        </h2>
+        <p className="text-[11px] text-slate-400 mt-0.5">
+          Aprove novos cadastros, defina permissões ou exclua contas não autorizadas.
+        </p>
       </div>
 
-      {loading ? (
-        <p className="text-center py-10 text-slate-400 text-xs">Carregando usuários...</p>
-      ) : fiscaisFiltrados.length === 0 ? (
-        <div className="bg-white rounded-2xl p-8 text-center text-slate-400 border border-slate-200 text-xs">
-          Nenhum fiscal encontrado nesta categoria.
-        </div>
-      ) : (
-        <div className="space-y-2.5">
-          {fiscaisFiltrados.map((fiscal) => {
-            const carregando = atualizandoId === fiscal.id
+      {fiscais.map((fiscal) => {
+        const ehProprioUsuario = fiscal.id === meuId
+        const podeExcluir = !ehProprioUsuario && (meuPapel === 'superadmin' || fiscal.papel === 'fiscal')
 
-            return (
-              <div
-                key={fiscal.id}
-                className={`bg-white p-4 rounded-xl border shadow-sm transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                  !fiscal.ativo ? 'border-amber-300 bg-amber-50/20' : 'border-slate-200'
-                }`}
-              >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-slate-800 text-sm">
-                      {fiscal.nome_completo || 'Sem nome informado'}
-                    </span>
-                    <span
-                      className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
-                        fiscal.papel === 'superadmin'
-                          ? 'bg-purple-100 text-purple-700'
-                          : fiscal.papel === 'admin'
-                          ? 'bg-blue-100 text-blue-700'
-                          : 'bg-slate-100 text-slate-600'
-                      }`}
-                    >
-                      {fiscal.papel}
-                    </span>
-                  </div>
-
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Cadastrado em:{' '}
-                    {new Date(fiscal.created_at).toLocaleDateString('pt-BR')} às{' '}
-                    {new Date(fiscal.created_at).toLocaleTimeString('pt-BR', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {fiscal.papel !== 'superadmin' && (
-                    <select
-                      value={fiscal.papel}
-                      onChange={(e) =>
-                        alterarPapel(fiscal.id, e.target.value as 'fiscal' | 'admin')
-                      }
-                      disabled={carregando}
-                      className="text-xs bg-slate-50 border border-slate-200 rounded-lg p-1.5 text-slate-700 focus:outline-none"
-                    >
-                      <option value="fiscal">Fiscal</option>
-                      <option value="admin">Administrador</option>
-                    </select>
-                  )}
-
-                  {fiscal.papel !== 'superadmin' && (
-                    <button
-                      onClick={() => alternarStatus(fiscal)}
-                      disabled={carregando}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition active:scale-95 disabled:opacity-50 ${
-                        fiscal.ativo
-                          ? 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
-                          : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm'
-                      }`}
-                    >
-                      {carregando
-                        ? 'Atualizando...'
-                        : fiscal.ativo
-                        ? 'Bloquear Acesso'
-                        : 'Aprovar Acesso'}
-                    </button>
-                  )}
-                </div>
+        return (
+          <div
+            key={fiscal.id}
+            className={`bg-white p-4 rounded-xl border shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+              !fiscal.ativo ? 'border-amber-300 bg-amber-50/30' : 'border-slate-200'
+            }`}
+          >
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-slate-800 text-sm">{fiscal.nome_completo}</span>
+                {!fiscal.ativo ? (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                    Pendente / Bloqueado
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    Ativo
+                  </span>
+                )}
+                {ehProprioUsuario && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-500">
+                    Você
+                  </span>
+                )}
               </div>
-            )
-          })}
-        </div>
-      )}
+
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-[11px] text-slate-500">Nível:</span>
+                <select
+                  disabled={ehProprioUsuario || processandoId === fiscal.id || (fiscal.papel === 'superadmin' && meuPapel !== 'superadmin')}
+                  value={fiscal.papel}
+                  onChange={(e) => alterarPapel(fiscal, e.target.value as 'fiscal' | 'admin' | 'superadmin')}
+                  className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-slate-50 text-slate-700 font-medium focus:outline-none"
+                >
+                  <option value="fiscal">Fiscal</option>
+                  <option value="admin">Administrador</option>
+                  {meuPapel === 'superadmin' && <option value="superadmin">Superadmin</option>}
+                </select>
+              </div>
+            </div>
+
+            {!ehProprioUsuario && (
+              <div className="flex items-center gap-2 self-end sm:self-center">
+                <button
+                  disabled={processandoId === fiscal.id}
+                  onClick={() => alternarStatus(fiscal)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                    fiscal.ativo
+                      ? 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                      : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
+                  }`}
+                >
+                  {fiscal.ativo ? 'Desativar' : '✓ Aprovar'}
+                </button>
+
+                {podeExcluir && (
+                  <button
+                    disabled={processandoId === fiscal.id}
+                    onClick={() => excluirFiscal(fiscal)}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition"
+                  >
+                    Excluir
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
