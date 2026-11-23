@@ -26,6 +26,24 @@ export default function ImportarCSV({ conservs, onFechar, onConcluido }: Importa
       .trim()
   }
 
+  async function lerArquivoComEncodingCorreto(file: File): Promise<string> {
+    const buffer = await file.arrayBuffer()
+    // Tenta ler primeiro como UTF-8 estrito
+    const utf8Decoder = new TextDecoder('utf-8', { fatal: true })
+    try {
+      return utf8Decoder.decode(buffer)
+    } catch {
+      // Se falhar (arquivo salvo em Excel Windows-1252 / ISO-8859-1), decodifica automaticamente
+      const winDecoder = new TextDecoder('windows-1252')
+      return winDecoder.decode(buffer)
+    }
+  }
+
+  function dividirLinhaCSV(linha: string, separadorPadrao: string): string[] {
+    const sep = linha.includes(';') ? ';' : separadorPadrao
+    return linha.split(sep).map((val) => val.replace(/^"|"$/g, '').trim())
+  }
+
   async function processarImportacao(e: React.FormEvent) {
     e.preventDefault()
     if (!arquivo) {
@@ -37,7 +55,7 @@ export default function ImportarCSV({ conservs, onFechar, onConcluido }: Importa
     setErro(null)
 
     try {
-      const texto = await arquivo.text()
+      const texto = await lerArquivoComEncodingCorreto(arquivo)
       const linhas = texto
         .split(/\r?\n/)
         .map((l) => l.trim())
@@ -47,10 +65,8 @@ export default function ImportarCSV({ conservs, onFechar, onConcluido }: Importa
         throw new Error('O ficheiro está vazio ou contém apenas o cabeçalho.')
       }
 
-      // Detecta automaticamente se o separador é ';' ou ','
-      const separador = linhas[0].includes(';') ? ';' : ','
-
-      const cabecalhos = linhas[0].split(separador).map((c) => normalizarTexto(c.replace(/^"|"$/g, '')))
+      const separadorCabecalho = linhas[0].includes(';') ? ';' : ','
+      const cabecalhos = dividirLinhaCSV(linhas[0], separadorCabecalho).map(normalizarTexto)
 
       const idxNome = cabecalhos.findIndex((c) => c === 'nome')
       const idxCodigo = cabecalhos.findIndex((c) => c.includes('codigo') || c.includes('matricula'))
@@ -66,7 +82,7 @@ export default function ImportarCSV({ conservs, onFechar, onConcluido }: Importa
       const registrosParaInserir = []
 
       for (let i = 1; i < linhas.length; i++) {
-        const colunas = linhas[i].split(separador).map((val) => val.replace(/^"|"$/g, '').trim())
+        const colunas = dividirLinhaCSV(linhas[i], separadorCabecalho)
         const nome = colunas[idxNome]
         if (!nome) continue
 
