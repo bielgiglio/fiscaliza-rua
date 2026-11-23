@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { gerarFichaFuncionarioPDF } from '../lib/gerarRelatorioPDF'
+import { buscarTodosFuncionarios } from '../lib/buscarTodosFuncionarios'
 
 interface FuncionarioResumo {
   id: string
@@ -49,26 +50,20 @@ export default function HistoricoFuncionario() {
   const [dataFim, setDataFim] = useState('')
 
   useEffect(() => {
-    async function carregarFuncionarios() {
-      setLoadingLista(true)
-      const { data } = await supabase
-        .from('funcionarios')
-        .select(`
-          id,
-          nome,
-          codigo,
-          empresa,
-          funcao_exercida,
-          ativo,
-          conserv:conservs ( nome )
-        `)
-        .order('nome')
-
-      if (data) setFuncionarios(data as unknown as FuncionarioResumo[])
+  async function carregarFuncionarios() {
+    setLoadingLista(true)
+    try {
+      const lista = await buscarTodosFuncionarios()
+      setFuncionarios(lista as unknown as FuncionarioResumo[])
+    } catch (err) {
+      console.error(err)
+    } finally {
       setLoadingLista(false)
     }
-    carregarFuncionarios()
-  }, [])
+  }
+  carregarFuncionarios()
+}, [])
+
 
   useEffect(() => {
     if (!funcionarioSelecionado) return

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import ImportarCSV from './ImportarCSV'
+import { buscarTodosFuncionarios } from '../lib/buscarTodosFuncionarios'
 
 interface Conserv {
   id: string
@@ -49,24 +50,23 @@ export default function AdminFuncionarios() {
   const [conservId, setConservId] = useState('')
 
   async function carregarDados() {
-    setLoading(true)
+  setLoading(true)
 
-    const [resConservs, resFuncs] = await Promise.all([
+  try {
+    const [resConservs, listaFuncs] = await Promise.all([
       supabase.from('conservs').select('id, nome').eq('ativo', true).order('nome'),
-      supabase
-        .from('funcionarios')
-        .select(`
-          *,
-          conserv:conservs ( nome )
-        `)
-        .order('nome'),
+      buscarTodosFuncionarios(),
     ])
 
     if (resConservs.data) setConservs(resConservs.data)
-    if (resFuncs.data) setFuncionarios(resFuncs.data as Funcionario[])
-
+    setFuncionarios(listaFuncs as Funcionario[])
+  } catch (err) {
+    console.error('Erro ao carregar funcionários:', err)
+  } finally {
     setLoading(false)
   }
+}
+
 
   useEffect(() => {
     carregarDados()
