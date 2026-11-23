@@ -461,79 +461,87 @@ export default function App() {
     <div className="min-h-screen bg-slate-100 p-4 sm:p-6 pb-20">
       <div className="max-w-2xl mx-auto">
         {/* Cabeçalho Responsivo Mobile/Desktop */}
+                {/* Cabeçalho Responsivo Mobile/Desktop */}
         <header className="mb-5 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base sm:text-lg font-bold text-slate-800">Fiscalização de Rua</h1>
-                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-blue-100 text-blue-700">
-                  {perfil?.papel}
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
+          <div className="flex items-start sm:items-center justify-between gap-2">
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-lg font-bold text-slate-800 truncate">
+                Fiscalização de Rua
+              </h1>
+              <p className="text-xs text-slate-500 mt-0.5 truncate">
                 Operador: <strong>{perfil?.nome_completo}</strong>
               </p>
             </div>
 
-            <button
-              onClick={() => supabase.auth.signOut()}
-              className="px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition active:scale-95 shrink-0"
-            >
-              Sair
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                onClick={() => setAbaAtual('perfil')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition active:scale-95 ${
+                  abaAtual === 'perfil'
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                }`}
+              >
+                Perfil
+              </button>
+
+              <button
+                onClick={() => supabase.auth.signOut()}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition active:scale-95"
+              >
+                Sair
+              </button>
+            </div>
           </div>
 
-          {/* Abas em Grade */}
-          <div className={`grid gap-1.5 ${ehAdmin ? 'grid-cols-4' : 'grid-cols-2'}`}>
-            <button
-              onClick={() => setAbaAtual('fiscalizar')}
-              className={`py-2 px-1 rounded-xl text-xs font-bold text-center transition ${
-                abaAtual === 'fiscalizar'
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Fiscalizar
-            </button>
+          {/* Abas de Navegação */}
+          {ehAdmin ? (
+            <div className="grid grid-cols-3 gap-1.5">
+              <button
+                onClick={() => setAbaAtual('fiscalizar')}
+                className={`py-2 px-1 rounded-xl text-[11px] sm:text-xs font-bold text-center truncate transition ${
+                  abaAtual === 'fiscalizar'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Fiscalizar
+              </button>
 
-            {ehAdmin && (
-              <>
-                <button
-                  onClick={() => setAbaAtual('historico')}
-                  className={`py-2 px-1 rounded-xl text-xs font-bold text-center transition ${
-                    abaAtual === 'historico'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  Relatórios
-                </button>
+              <button
+                onClick={() => setAbaAtual('historico')}
+                className={`py-2 px-1 rounded-xl text-[11px] sm:text-xs font-bold text-center truncate transition ${
+                  abaAtual === 'historico'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Relatórios
+              </button>
 
-                <button
-                  onClick={() => setAbaAtual('admin')}
-                  className={`py-2 px-1 rounded-xl text-xs font-bold text-center transition ${
-                    abaAtual === 'admin'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  Administração
-                </button>
-              </>
-            )}
-
-            <button
-              onClick={() => setAbaAtual('perfil')}
-              className={`py-2 px-1 rounded-xl text-xs font-bold text-center transition ${
-                abaAtual === 'perfil'
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              Meu Perfil
-            </button>
-          </div>
+              <button
+                onClick={() => setAbaAtual('admin')}
+                className={`py-2 px-1 rounded-xl text-[11px] sm:text-xs font-bold text-center truncate transition ${
+                  abaAtual === 'admin'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Administração
+              </button>
+            </div>
+          ) : (
+            abaAtual === 'perfil' && (
+              <button
+                onClick={() => setAbaAtual('fiscalizar')}
+                className="w-full py-2 px-2 rounded-xl text-xs font-bold text-center bg-slate-100 text-slate-700 hover:bg-slate-200 transition"
+              >
+                &larr; Voltar para Fiscalização
+              </button>
+            )
+          )}
         </header>
+
 
         {/* ABA: FISCALIZAÇÃO */}
         {abaAtual === 'fiscalizar' && (
