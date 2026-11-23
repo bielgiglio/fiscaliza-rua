@@ -6,6 +6,7 @@ import AdminFuncionarios from './components/AdminFuncionarios'
 import AdminConservs from './components/AdminConservs'
 import { gerarRelatorioPeriodoPDF } from './lib/gerarRelatorioPDF'
 import HistoricoFuncionario from './components/HistoricoFuncionario'
+import MeuPerfil from './components/MeuPerfil'
 import { obterDataHojeSP } from './lib/dataLocal'
 
 interface Conserv {
@@ -54,7 +55,7 @@ export default function App() {
   const [perfil, setPerfil] = useState<{ papel: string; ativo: boolean; nome_completo: string } | null>(null)
   const [carregandoSessao, setCarregandoSessao] = useState(true)
 
-  const [abaAtual, setAbaAtual] = useState<'fiscalizar' | 'historico' | 'admin'>('fiscalizar')
+  const [abaAtual, setAbaAtual] = useState<'fiscalizar' | 'historico' | 'admin' | 'perfil'>('fiscalizar')
 
   const [conservs, setConservs] = useState<Conserv[]>([])
   const [conservSelecionado, setConservSelecionado] = useState<Conserv | null>(null)
@@ -483,7 +484,7 @@ export default function App() {
           </div>
 
           {/* Abas em Grade */}
-          <div className={`grid gap-1.5 ${ehAdmin ? 'grid-cols-3' : 'grid-cols-1'}`}>
+          <div className={`grid gap-1.5 ${ehAdmin ? 'grid-cols-4' : 'grid-cols-2'}`}>
             <button
               onClick={() => setAbaAtual('fiscalizar')}
               className={`py-2 px-1 rounded-xl text-xs font-bold text-center transition ${
@@ -520,6 +521,17 @@ export default function App() {
                 </button>
               </>
             )}
+
+            <button
+              onClick={() => setAbaAtual('perfil')}
+              className={`py-2 px-1 rounded-xl text-xs font-bold text-center transition ${
+                abaAtual === 'perfil'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              Meu Perfil
+            </button>
           </div>
         </header>
 
@@ -899,6 +911,17 @@ export default function App() {
             {subAbaAdmin === 'funcionarios' && <AdminFuncionarios />}
             {subAbaAdmin === 'conservs' && <AdminConservs />}
           </div>
+        )}
+
+        {/* ABA: MEU PERFIL */}
+        {abaAtual === 'perfil' && (
+          <MeuPerfil
+            usuario={usuario}
+            perfil={perfil}
+            onNomeAtualizado={(novoNome) =>
+              setPerfil((prev) => (prev ? { ...prev, nome_completo: novoNome } : prev))
+            }
+          />
         )}
 
         {/* MODAL DE FISCALIZAÇÃO */}
