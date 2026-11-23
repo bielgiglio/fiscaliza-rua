@@ -82,7 +82,11 @@ export default function Login({ onLoginSucesso }: LoginProps) {
         onLoginSucesso()
       }
     } catch (err: any) {
-      setErro(err.message || 'Ocorreu um erro na autenticação.')
+      if (err.message?.includes('User already registered')) {
+        setErro('Este e-mail já está cadastrado no sistema.')
+      } else {
+        setErro(err.message || 'Ocorreu um erro na autenticação.')
+      }
     } finally {
       setLoading(false)
     }
