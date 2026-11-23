@@ -22,21 +22,78 @@ export default function ImportarCSV({ conservs, onFechar, onConcluido }: Importa
     return str
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\uFFFD/g, '')
       .toLowerCase()
       .trim()
   }
 
+  // Corrige palavras corrompidas com o losango '' (\uFFFD) antes da importação
+  function limparCorrupcaoUTF8(texto: string): string {
+    return texto
+      .replace(/CONCEI\uFFFD+O/gi, 'CONCEIÇÃO')
+      .replace(/FRAZ\uFFFDO/gi, 'FRAZÃO')
+      .replace(/GUIMAR\uFFFDES/gi, 'GUIMARÃES')
+      .replace(/ASSUN\uFFFD+O/gi, 'ASSUNÇÃO')
+      .replace(/ENCARNA\uFFFD+O/gi, 'ENCARNAÇÃO')
+      .replace(/ANUNCIA\uFFFD+O/gi, 'ANUNCIAÇÃO')
+      .replace(/CONSOLA\uFFFD+O/gi, 'CONSOLAÇÃO')
+      .replace(/EXALTA\uFFFD+O/gi, 'EXALTAÇÃO')
+      .replace(/PURIFICA\uFFFD+O/gi, 'PURIFICAÇÃO')
+      .replace(/RESSURREI\uFFFD+O/gi, 'RESSURREIÇÃO')
+      .replace(/JO\uFFFDO/gi, 'JOÃO')
+      .replace(/S\uFFFDO/gi, 'SÃO')
+      .replace(/JOS\uFFFD/gi, 'JOSÉ')
+      .replace(/INO\uFFFD/gi, 'INOÃ')
+      .replace(/MARIC\uFFFD/gi, 'MARICÁ')
+      .replace(/ITAIPUA\uFFFDU/gi, 'ITAIPUAÇU')
+      .replace(/ESPA\uFFFDO/gi, 'ESPAÇO')
+      .replace(/RO\uFFFDADEIRA/gi, 'ROÇADEIRA')
+      .replace(/C\uFFFDNDIDO/gi, 'CÂNDIDO')
+      .replace(/ANT\uFFFDNIO/gi, 'ANTÔNIO')
+      .replace(/TEN\uFFFDRIO/gi, 'TENÓRIO')
+      .replace(/SEBASTI\uFFFDO/gi, 'SEBASTIÃO')
+      .replace(/DAMASCENO/gi, 'DAMASCENO')
+      .replace(/SIM\uFFFDES/gi, 'SIMÕES')
+      .replace(/MAGALH\uFFFDES/gi, 'MAGALHÃES')
+      .replace(/BRAND\uFFFDO/gi, 'BRANDÃO')
+      .replace(/FAL\uFFFDO/gi, 'FALCÃO')
+      .replace(/GALV\uFFFDO/gi, 'GALVÃO')
+      .replace(/LE\uFFFDO/gi, 'LEÃO')
+      .replace(/PAIX\uFFFDO/gi, 'PAIXÃO')
+      .replace(/ARAG\uFFFDO/gi, 'ARAGÃO')
+      .replace(/TRIST\uFFFDO/gi, 'TRISTÃO')
+      .replace(/JORD\uFFFDO/gi, 'JORDÃO')
+      .replace(/MOUR\uFFFDO/gi, 'MOURÃO')
+      .replace(/GUSM\uFFFDO/gi, 'GUSMÃO')
+      .replace(/ROM\uFFFDO/gi, 'ROMÃO')
+      .replace(/CRIST\uFFFDV\uFFFDO/gi, 'CRISTÓVÃO')
+      .replace(/IN\uFFFDACIO/gi, 'INÁCIO')
+      .replace(/IN\uFFFDCIO/gi, 'INÁCIO')
+      .replace(/M\uFFFDRCIO/gi, 'MÁRCIO')
+      .replace(/F\uFFFDBIO/gi, 'FÁBIO')
+      .replace(/FL\uFFFDVIO/gi, 'FLÁVIO')
+      .replace(/CL\u{FFFD}UDIO/giu, 'CLÁUDIO')
+      .replace(/L\uFFFDCIO/gi, 'LÚCIO')
+      .replace(/S\uFFFDRGIO/gi, 'SÉRGIO')
+      .replace(/ROG\uFFFDRIO/gi, 'ROGÉRIO')
+      .replace(/VAL\uFFFDRIA/gi, 'VALÉRIA')
+      .replace(/ANDR\uFFFD/gi, 'ANDRÉ')
+      .replace(/CAETANO/gi, 'CAETANO')
+      .replace(/\uFFFD+O\b/gi, 'ÃO')
+      .replace(/\uFFFD+ES\b/gi, 'ÃES')
+  }
+
   async function lerArquivoComEncodingCorreto(file: File): Promise<string> {
     const buffer = await file.arrayBuffer()
-    // Tenta ler primeiro como UTF-8 estrito
     const utf8Decoder = new TextDecoder('utf-8', { fatal: true })
+    let conteudo = ''
     try {
-      return utf8Decoder.decode(buffer)
+      conteudo = utf8Decoder.decode(buffer)
     } catch {
-      // Se falhar (arquivo salvo em Excel Windows-1252 / ISO-8859-1), decodifica automaticamente
       const winDecoder = new TextDecoder('windows-1252')
-      return winDecoder.decode(buffer)
+      conteudo = winDecoder.decode(buffer)
     }
+    return limparCorrupcaoUTF8(conteudo)
   }
 
   function dividirLinhaCSV(linha: string, separadorPadrao: string): string[] {
@@ -70,7 +127,10 @@ export default function ImportarCSV({ conservs, onFechar, onConcluido }: Importa
 
       const idxNome = cabecalhos.findIndex((c) => c === 'nome')
       const idxCodigo = cabecalhos.findIndex((c) => c.includes('codigo') || c.includes('matricula'))
-      const idxFuncao = cabecalhos.findIndex((c) => c.includes('funcao'))
+      // Reconhece 'funcao', 'funo' (quando 'çã' virou '') ou 'cargo'
+      const idxFuncao = cabecalhos.findIndex(
+        (c) => c.includes('funcao') || c.includes('funo') || c.includes('cargo')
+      )
       const idxEmpresa = cabecalhos.findIndex((c) => c.includes('empresa'))
       const idxConserv = cabecalhos.findIndex((c) => c.includes('conserv') || c.includes('setor'))
 
@@ -115,7 +175,6 @@ export default function ImportarCSV({ conservs, onFechar, onConcluido }: Importa
         throw new Error('Nenhum funcionário válido encontrado nas linhas do arquivo.')
       }
 
-      // Envia em lotes de 100 registros
       const tamanhoLote = 100
       for (let i = 0; i < registrosParaInserir.length; i += tamanhoLote) {
         const lote = registrosParaInserir.slice(i, i + tamanhoLote)
